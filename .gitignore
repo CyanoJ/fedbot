@@ -1,0 +1,4 @@
+.env
+*.log
+profiles.toml
+__pycache__
