@@ -14,6 +14,7 @@
 #    limitations under the License.
 
 
+from __future__ import annotations
 import logging
 import pathlib
 import sys
@@ -43,21 +44,21 @@ def log_except_hook(etype, value, tb):
 sys.excepthook = log_except_hook
 logger.info("Importing modules")
 
-from typing import Optional
+from typing import Optional, Any
 import nextcord
 from nextcord.ext import commands
 from nextcord.ext import application_checks
 import os
 import dotenv
-import toml
 import datetime
 import uuid
 import string
+import tomlkit
 
-logger.info("Loading profiles")
+
+logger.info("Loading environment")
 dotenv.load_dotenv()
 TOKEN = os.getenv("DISCORD_FEDBOT_TOKEN")
-PROFILES = {i["server_id"]: i for i in toml.load(pathlib.Path(__file__).parent.joinpath("profiles.toml")).values()}
 EPHEMERAL_MSGS = True
 LOGIN_TIME = None
 
@@ -68,14 +69,34 @@ intents.members = True
 bot = commands.Bot(intents=intents)
 
 
+class ServerProfiles:
+    def __init__(self, toml_doc: tomlkit.TOMLDocument):
+        self.refresh(toml_doc)
+
+    def refresh(self, toml_doc: tomlkit.TOMLDocument):
+        self.data = {i["server_id"]: i for i in toml_doc.values()}
+
+    def __getitem__(self, i) -> Any:
+        return self.data[i]
+
+    def __contains__(self, i) -> bool:
+        return i in self.data
+
+
+logger.info("Loading profiles")
+with open(pathlib.Path(__file__).parent.joinpath("profiles.toml"), "rb") as file:
+    profiles_document = tomlkit.load(file)
+profiles = ServerProfiles(profiles_document)
+
+
 def has_mod_role(interaction: nextcord.Interaction):
     """Check if author of slash command has mod role in server"""
-    return nextcord.utils.get(interaction.user.roles, id=PROFILES[interaction.guild.id]["moderator_role"]) != None
+    return nextcord.utils.get(interaction.user.roles, id=profiles[interaction.guild.id]["moderator_role"]) != None
 
 
 def has_server_profile(interaction: nextcord.Interaction):
     """Check if slash command is in a server that's on the profiles list"""
-    if interaction.guild.id in PROFILES:
+    if interaction.guild.id in profiles:
         return True
     raise application_checks.ApplicationNoPrivateMessage
 
@@ -100,16 +121,16 @@ async def on_ready():
 @bot.event
 async def on_member_join(member: nextcord.Member):
     """Eventually gives creator admin on rejoining, does nothing right now."""
-    if member.guild.id not in PROFILES:
+    if member.guild.id not in profiles:
         logger.warning(f"User '{member}' joined server '{member.guild}', which is not a registered server")
         return
 
     logger.info(f"User '{member}' joined server '{member.guild}'")
-    await bot.get_channel(PROFILES[member.guild.id]["wait_channel"]).send(
-        f"<@&{PROFILES[member.guild.id]['moderator_role']}>, look who just showed up:"
+    await bot.get_channel(profiles[member.guild.id]["wait_channel"]).send(
+        f"<@&{profiles[member.guild.id]['moderator_role']}>, look who just showed up:"
     )
     # Separate lines to make sure new member sees second message
-    await bot.get_channel(PROFILES[member.guild.id]["wait_channel"]).send(f"Hey, {member.mention}, glad you're here!")
+    await bot.get_channel(profiles[member.guild.id]["wait_channel"]).send(f"Hey, {member.mention}, glad you're here!")
 
     if await bot.is_owner(member):
         guid = uuid.uuid4().hex.upper()
@@ -210,11 +231,11 @@ async def say(interaction: nextcord.Interaction, channel: nextcord.TextChannel, 
 @application_checks.check(has_mod_role)
 async def accept(interaction: nextcord.Interaction, user: nextcord.Member):
     """Give a user in the server the member role and sends a welcome message"""
-    if nextcord.utils.get(user.roles, id=PROFILES[interaction.guild.id]["member_role"]) != None:
+    if nextcord.utils.get(user.roles, id=profiles[interaction.guild.id]["member_role"]) != None:
         await interaction.send("User is already accepted.", ephemeral=EPHEMERAL_MSGS)
     else:
         await user.add_roles(
-            nextcord.utils.get(interaction.guild.roles, id=PROFILES[interaction.guild.id]["member_role"])
+            nextcord.utils.get(interaction.guild.roles, id=profiles[interaction.guild.id]["member_role"])
         )
         await interaction.send("Accepted user!", ephemeral=EPHEMERAL_MSGS)
         await interaction.guild.system_channel.send(
@@ -228,11 +249,11 @@ async def accept(interaction: nextcord.Interaction, user: nextcord.Member):
 @application_checks.check(has_mod_role)
 async def restore(interaction: nextcord.Interaction, user: nextcord.Member):
     """Give a user in the server the member role back"""
-    if nextcord.utils.get(user.roles, id=PROFILES[interaction.guild.id]["member_role"]) != None:
+    if nextcord.utils.get(user.roles, id=profiles[interaction.guild.id]["member_role"]) != None:
         await interaction.send("User is already restored.", ephemeral=EPHEMERAL_MSGS)
     else:
         await user.add_roles(
-            nextcord.utils.get(interaction.guild.roles, id=PROFILES[interaction.guild.id]["member_role"])
+            nextcord.utils.get(interaction.guild.roles, id=profiles[interaction.guild.id]["member_role"])
         )
         await interaction.send("Restored user!", ephemeral=EPHEMERAL_MSGS)
         await interaction.guild.system_channel.send(f"Welcome back, {user.mention}. Please behave this time.")
@@ -244,15 +265,15 @@ async def restore(interaction: nextcord.Interaction, user: nextcord.Member):
 @application_checks.check(has_mod_role)
 async def boot(interaction: nextcord.Interaction, user: nextcord.Member):
     """Remove a user's member role"""
-    if nextcord.utils.get(user.roles, id=PROFILES[interaction.guild.id]["member_role"]) == None:
+    if nextcord.utils.get(user.roles, id=profiles[interaction.guild.id]["member_role"]) == None:
         await interaction.send("User is already booted.", ephemeral=EPHEMERAL_MSGS)
     else:
         await user.remove_roles(
-            nextcord.utils.get(interaction.guild.roles, id=PROFILES[interaction.guild.id]["member_role"])
+            nextcord.utils.get(interaction.guild.roles, id=profiles[interaction.guild.id]["member_role"])
         )
         await interaction.send("Booted user!", ephemeral=EPHEMERAL_MSGS)
         await interaction.guild.system_channel.send(
-            f"{user.mention} has been booted to {nextcord.utils.get(interaction.guild.channels, id=PROFILES[interaction.guild.id]['wait_channel']).mention} for misbehavior."
+            f"{user.mention} has been booted to {nextcord.utils.get(interaction.guild.channels, id=profiles[interaction.guild.id]['wait_channel']).mention} for misbehavior."
         )
 
 
@@ -279,7 +300,7 @@ async def help(
 @application_checks.check(has_mod_role)
 async def deny(interaction: nextcord.Interaction, user: nextcord.Member):
     """Kick user in waiting room from server"""
-    if nextcord.utils.get(user.roles, id=PROFILES[interaction.guild.id]["member_role"]) != None:
+    if nextcord.utils.get(user.roles, id=profiles[interaction.guild.id]["member_role"]) != None:
         await interaction.send("User is a member.", ephemeral=EPHEMERAL_MSGS)
     else:
         await user.kick()
