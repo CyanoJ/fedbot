@@ -75,6 +75,7 @@ class ServerProfiles:
 
     def refresh(self, toml_doc: tomlkit.TOMLDocument):
         self.data = {i["server_id"]: i for i in toml_doc.values()}
+        self.titles = {j["server_id"]: i for (i, j) in toml_doc.items()}
 
     def __getitem__(self, i) -> Any:
         return self.data[i]
@@ -82,11 +83,18 @@ class ServerProfiles:
     def __contains__(self, i) -> bool:
         return i in self.data
 
+    def title(self, id: int) -> str:
+        return self.titles[id]
+
 
 logger.info("Loading profiles")
-with open(pathlib.Path(__file__).parent.joinpath("profiles.toml"), "rb") as file:
+with open(pathlib.Path(__file__).parent.joinpath("profiles.toml"), "r", encoding="utf-8") as file:
     profiles_document = tomlkit.load(file)
 profiles = ServerProfiles(profiles_document)
+
+
+class ApplicationServerAlreadyRegistered(nextcord.errors.ApplicationCheckFailure):
+    pass
 
 
 def has_mod_role(interaction: nextcord.Interaction):
@@ -99,6 +107,13 @@ def has_server_profile(interaction: nextcord.Interaction):
     if interaction.guild.id in profiles:
         return True
     raise application_checks.ApplicationNoPrivateMessage
+
+
+def is_new_server(interaction: nextcord.Interaction):
+    """Confirm server is not in the profiles list already"""
+    if interaction.guild.id not in profiles:
+        return True
+    raise ApplicationServerAlreadyRegistered
 
 
 @bot.application_command_before_invoke
@@ -158,6 +173,15 @@ async def on_application_command_error(interaction: nextcord.Interaction, except
             interaction.application_command.name,
         )
         await interaction.send("This command must be used in a registered server.", ephemeral=EPHEMERAL_MSGS)
+    elif isinstance(exception, ApplicationServerAlreadyRegistered):
+        logger.warning(
+            "User '%s' tried to access command '%s' in "
+            + (f"server '{interaction.guild.name}'" if interaction.guild else "DM")
+            + " which is already registered",
+            interaction.user,
+            interaction.application_command.name,
+        )
+        await interaction.send("This server is already registered!", ephemeral=EPHEMERAL_MSGS)
     elif isinstance(exception, nextcord.errors.ApplicationCheckFailure):
         logger.warning(
             "User '%s' tried to access command '%s' without authorization in "
@@ -367,6 +391,67 @@ async def alert(
         f"ATTENTION {mention.mention if mention else interaction.guild.default_role}! {interaction.user.mention} has a message for you:\n> {msg}"
     )
     await interaction.send(f"Alert sent! You can view it [here](<{link.jump_url}>).", ephemeral=EPHEMERAL_MSGS)
+
+
+@bot.slash_command()
+async def profile(interaction: nextcord.Interaction):
+    pass
+
+
+@profile.subcommand()
+@application_checks.guild_only()
+@application_checks.has_guild_permissions(administrator=True)
+@application_checks.check(is_new_server)
+async def init(
+    interaction: nextcord.Interaction,
+    mod: nextcord.Role,
+    member: nextcord.Role,
+    laws: nextcord.TextChannel,
+    wait: nextcord.TextChannel,
+):
+    profiles_document.add(
+        str(uuid.uuid4()),
+        {
+            "server_id": interaction.guild.id,
+            "moderator_role": mod.id,
+            "member_role": member.id,
+            "laws_channel": laws.id,
+            "wait_channel": wait.id,
+        },
+    )
+    logger.info(f"Added server {interaction.guild.name} to profiles.toml")
+    logger.warning("Refreshing profiles.toml")
+    with open(pathlib.Path(__file__).parent.joinpath("profiles.toml"), "w", encoding="utf-8") as file:
+        tomlkit.dump(profiles_document, file)
+    profiles.refresh(profiles_document)
+    await interaction.send("Created server profile.", ephemeral=EPHEMERAL_MSGS)
+
+
+@profile.subcommand()
+@application_checks.guild_only()
+@application_checks.has_guild_permissions(administrator=True)
+@application_checks.check(has_server_profile)
+async def update(
+    interaction: nextcord.Interaction,
+    mod: Optional[nextcord.Role] = None,
+    member: Optional[nextcord.Role] = None,
+    laws: Optional[nextcord.TextChannel] = None,
+    wait: Optional[nextcord.TextChannel] = None,
+):
+    if mod:
+        profiles_document[profiles.title(interaction.guild.id)]["moderator_role"] = mod.id
+    if member:
+        profiles_document[profiles.title(interaction.guild.id)]["member_role"] = member.id
+    if laws:
+        profiles_document[profiles.title(interaction.guild.id)]["laws_channel"] = laws.id
+    if wait:
+        profiles_document[profiles.title(interaction.guild.id)]["wait_channel"] = wait.id
+    if any((mod, member, laws, wait)):
+        logger.warning("Refreshing profiles.toml")
+        with open(pathlib.Path(__file__).parent.joinpath("profiles.toml"), "w", encoding="utf-8") as file:
+            tomlkit.dump(profiles_document, file)
+        profiles.refresh(profiles_document)
+    await interaction.send("Updated server profile.", ephemeral=EPHEMERAL_MSGS)
 
 
 logger.info("Running bot")

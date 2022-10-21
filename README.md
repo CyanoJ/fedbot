@@ -22,7 +22,7 @@ Add the token to FedBot's settings (replace `$TOKEN` with your bot token, make s
 echo DISCORD_FEDBOT_TOKEN="$TOKEN" > .env
 ```
 
-Create a `profiles.toml` file (see [this section](#profiles-file-structure) for the file's structure).
+Create a `profiles.toml` file (see [this section](#profiles-file-structure) for the file's structure). Alternatively, leave `profiles.toml` blank and let the server admins add the profiles themselves with the `/profiles init` command.
 
 Run FedBot:
 ```
