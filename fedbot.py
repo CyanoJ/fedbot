@@ -54,6 +54,7 @@ import datetime
 import uuid
 import string
 import tomlkit
+import json
 
 
 logger.info("Loading environment")
@@ -206,9 +207,24 @@ async def on_application_command_error(interaction: nextcord.Interaction, except
 
 
 @bot.slash_command()
-async def test(interaction: nextcord.Interaction):
+async def test(interaction: nextcord.Interaction, debug: bool = False):
     """Verify bot is working"""
-    await interaction.send("Test received!", ephemeral=EPHEMERAL_MSGS)
+    debug_info: dict[str, bool] = {}
+    if debug:
+        debug_info["owner"] = await bot.is_owner(interaction.user)
+        debug_info["guild"] = interaction.guild is not None
+        if debug_info["guild"]:
+            debug_info["registered"] = interaction.guild.id in profiles
+            if debug_info["registered"]:
+                debug_info["mod"] = (
+                    nextcord.utils.get(interaction.user.roles, id=profiles[interaction.guild.id]["moderator_role"])
+                    is not None
+                )
+    await interaction.send(
+        "Test received!",
+        **({"embed": nextcord.Embed(description=json.dumps(debug_info))} if debug else {}),
+        ephemeral=EPHEMERAL_MSGS,
+    )
 
 
 @bot.slash_command()
