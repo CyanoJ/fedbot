@@ -3,3 +3,4 @@
 profiles.toml
 __pycache__
 *.sh
+*.swp

@@ -192,7 +192,7 @@ async def on_application_command_error(interaction: nextcord.Interaction, except
         )
         await interaction.send("You do not have authorization to access this command.", ephemeral=EPHEMERAL_MSGS)
     else:
-        logger.critical(
+        logger.error(
             "Exception occured from command '%s' from user '%s' in "
             + (f"server '{interaction.guild.name}'" if interaction.guild else "DM")
             + ":\n%s",
@@ -355,7 +355,7 @@ async def deny(interaction: nextcord.Interaction, user: nextcord.Member):
 async def gag(
     interaction: nextcord.Interaction,
     user: nextcord.Member,
-    duration: int = nextcord.SlashOption(required=False, default=5, description="Minutes to gag user for"),
+    duration: float = nextcord.SlashOption(required=False, default=5, description="Minutes to gag user for"),
 ):
     """Timeout user for specified duration"""
     await user.timeout(datetime.timedelta(minutes=duration))
