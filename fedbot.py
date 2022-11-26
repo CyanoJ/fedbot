@@ -26,7 +26,7 @@ loggerFormatter = logging.Formatter(
 )
 loggerFormatter.converter = time.gmtime
 loggerHandler = logging.FileHandler(
-    pathlib.Path(__file__).parent.joinpath(pathlib.Path(__file__).stem + ".log"), encoding="utf-8"
+    pathlib.Path(__file__).with_name(pathlib.Path(__file__).stem + ".log"), encoding="utf-8"
 )
 loggerHandler.setFormatter(loggerFormatter)
 logging.basicConfig(level=logging.WARNING, handlers=[loggerHandler])
@@ -89,7 +89,7 @@ class ServerProfiles:
 
 
 logger.info("Loading profiles")
-with open(pathlib.Path(__file__).parent.joinpath("profiles.toml"), "r", encoding="utf-8") as file:
+with open(pathlib.Path(__file__).with_name("profiles.toml"), "r", encoding="utf-8") as file:
     profiles_document = tomlkit.load(file)
 profiles = ServerProfiles(profiles_document)
 
@@ -437,7 +437,7 @@ async def init(
     )
     logger.info(f"Added server {interaction.guild.name} to profiles.toml")
     logger.warning("Refreshing profiles.toml")
-    with open(pathlib.Path(__file__).parent.joinpath("profiles.toml"), "w", encoding="utf-8") as file:
+    with open(pathlib.Path(__file__).with_name("profiles.toml"), "w", encoding="utf-8") as file:
         tomlkit.dump(profiles_document, file)
     profiles.refresh(profiles_document)
     await interaction.send("Created server profile.", ephemeral=EPHEMERAL_MSGS)
@@ -464,7 +464,7 @@ async def update(
         profiles_document[profiles.title(interaction.guild.id)]["wait_channel"] = wait.id
     if any((mod, member, laws, wait)):
         logger.warning("Refreshing profiles.toml")
-        with open(pathlib.Path(__file__).parent.joinpath("profiles.toml"), "w", encoding="utf-8") as file:
+        with open(pathlib.Path(__file__).with_name("profiles.toml"), "w", encoding="utf-8") as file:
             tomlkit.dump(profiles_document, file)
         profiles.refresh(profiles_document)
     await interaction.send("Updated server profile.", ephemeral=EPHEMERAL_MSGS)
