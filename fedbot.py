@@ -116,7 +116,10 @@ def summarize(text: str, num_sentences: int = DEFAULT_SENTENCES) -> str:
     """
     sentences = sent_tokenize(text)
     words = [[j for j in word_tokenize(i) if j not in ignored_words and j not in string.punctuation] for i in sentences]
+    if not words:  # Return whole text if cannot extract any distinguishing words
+        return sentences
     word_freq = collections.Counter(itertools.chain.from_iterable(words))
+    logger.info(word_freq)
     max_freq = list(word_freq.values())[0]  # Valid if Counter is sorted high-to-low, which it is
     freq_by_sentence = collections.Counter(
         {i: sum(word_freq[k] / max_freq for k in j) / len(j) for (i, j) in enumerate(words)}
