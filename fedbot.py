@@ -45,9 +45,6 @@ sys.excepthook = log_except_hook
 logger.info("Importing modules")
 
 from typing import Optional, Any
-import nextcord
-from nextcord.ext import commands
-from nextcord.ext import application_checks
 import os
 import dotenv
 import datetime
@@ -55,6 +52,13 @@ import uuid
 import string
 import tomlkit
 import json
+import itertools
+import collections
+from nltk.corpus import stopwords
+from nltk.tokenize import word_tokenize, sent_tokenize
+import nextcord
+from nextcord.ext import commands
+from nextcord.ext import application_checks
 
 
 logger.info("Loading environment")
@@ -62,6 +66,8 @@ dotenv.load_dotenv()
 TOKEN = os.getenv("DISCORD_FEDBOT_TOKEN")
 EPHEMERAL_MSGS = True
 LOGIN_TIME = None
+DEFAULT_SENTENCES = 5
+ignored_words = stopwords.words()
 
 logger.info("Creating bot")
 intents = nextcord.Intents.default()
@@ -96,6 +102,26 @@ profiles = ServerProfiles(profiles_document)
 
 class ApplicationServerAlreadyRegistered(nextcord.errors.ApplicationCheckFailure):
     pass
+
+
+def summarize(text: str, num_sentences: int = DEFAULT_SENTENCES) -> str:
+    """
+    Retrieve the n most important sentences from the text.
+
+    Sentence importance is derived from the sum of the weighted frequency
+    of its words divided by its length.
+    The weighted frequency is the word's frequency divided by the max frequency.
+
+    Thanks to https://github.com/LazoCoder/Article-Summarizer for algorithm idea.
+    """
+    sentences = sent_tokenize(text)
+    words = [[j for j in word_tokenize(i) if j not in ignored_words and j not in string.punctuation] for i in sentences]
+    word_freq = collections.Counter(itertools.chain.from_iterable(words))
+    max_freq = list(word_freq.values())[0]  # Valid if Counter is sorted high-to-low, which it is
+    freq_by_sentence = collections.Counter(
+        {i: sum(word_freq[k] / max_freq for k in j) / len(j) for (i, j) in enumerate(words)}
+    )
+    return " ".join(sentences[j] for j in sorted(i[0] for i in freq_by_sentence.most_common(num_sentences)))
 
 
 def has_mod_role(interaction: nextcord.Interaction):
@@ -468,6 +494,11 @@ async def update(
             tomlkit.dump(profiles_document, file)
         profiles.refresh(profiles_document)
     await interaction.send("Updated server profile.", ephemeral=EPHEMERAL_MSGS)
+
+
+@bot.message_command(name="TL;DR")
+async def tldr(interaction: nextcord.Interaction, message: nextcord.Message):
+    await interaction.send(">>> " + summarize(message.content), ephemeral=False)  # Not ephemeral...for now
 
 
 logger.info("Running bot")
