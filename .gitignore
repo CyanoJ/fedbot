@@ -1,0 +1,7 @@
+/target
+.env
+*.db
+/migration/target
+/http-cacache
+
+/sea-query-patch
